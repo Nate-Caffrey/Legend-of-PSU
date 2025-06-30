@@ -394,10 +394,14 @@ impl Renderer {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
             render_pass.set_bind_group(1, &texture.bind_group, &[]);
-            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-            render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
-            render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..6, 0, 0..all_instances.len() as u32);
+            for chunk in chunks {
+                if let Some(instance_buffer) = &chunk.instance_buffer {
+                    render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                    render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
+                    render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                    render_pass.draw_indexed(0..6, 0, 0..chunk.block_face_instances.len() as u32);
+                }
+            }
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));

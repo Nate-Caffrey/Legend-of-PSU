@@ -1,5 +1,6 @@
 use glam::Vec3;
 use crate::engine::graphics::vertex::{BlockFaceInstance};
+use wgpu::util::DeviceExt;
 
 pub const CHUNK_SIZE: usize = 16;
 pub const CHUNK_SIZE_F: f32 = CHUNK_SIZE as f32;
@@ -22,6 +23,7 @@ pub struct Chunk {
     pub position: Vec3,
     pub blocks: [[[BlockType; CHUNK_SIZE]; CHUNK_SIZE]; CHUNK_SIZE],
     pub block_face_instances: Vec<BlockFaceInstance>,
+    pub instance_buffer: Option<wgpu::Buffer>,
 }
 
 impl Chunk {
@@ -30,6 +32,7 @@ impl Chunk {
             position,
             blocks: [[[BlockType::Air; CHUNK_SIZE]; CHUNK_SIZE]; CHUNK_SIZE],
             block_face_instances: Vec::new(),
+            instance_buffer: None,
         };
         chunk.generate_terrain();
         chunk
@@ -113,6 +116,18 @@ impl Chunk {
                     },
                 });
             }
+        }
+    }
+
+    pub fn build_instance_buffer(&mut self, device: &wgpu::Device) {
+        if self.block_face_instances.is_empty() {
+            self.instance_buffer = None;
+        } else {
+            self.instance_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Chunk Instance Buffer"),
+                contents: bytemuck::cast_slice(&self.block_face_instances),
+                usage: wgpu::BufferUsages::VERTEX,
+            }));
         }
     }
 } 
