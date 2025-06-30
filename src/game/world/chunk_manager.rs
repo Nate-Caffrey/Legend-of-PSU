@@ -61,7 +61,7 @@ impl ChunkManager {
     /// Call this every frame to receive finished chunks
     pub fn poll_new_chunks(&mut self, device: &wgpu::Device) {
         let mut to_remesh = Vec::new();
-        while let Ok((x, y, z, mut chunk)) = self.rx.try_recv() {
+        while let Ok((x, y, z, chunk)) = self.rx.try_recv() {
             to_remesh.push(((x, y, z), chunk));
             self.pending.remove(&(x, y, z));
         }

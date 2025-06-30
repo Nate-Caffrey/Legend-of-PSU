@@ -4,14 +4,12 @@ use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowId};
 use winit::event::DeviceEvent;
 use log::{error, warn};
-use std::time::Instant;
 
 use crate::engine::window::WindowManager;
 use crate::engine::graphics::{renderer::Renderer, texture::Texture};
 use crate::game::world::chunk_manager::ChunkManager;
 use crate::game::state::GameState;
 use crate::game::player::Player;
-use crate::engine::input::InputHandler;
 
 pub struct App {
     window_manager: WindowManager,
@@ -49,7 +47,7 @@ impl ApplicationHandler for App {
                 error!("Failed to create window, exiting");
                 std::process::exit(1);
             });
-        let size = window.inner_size();
+        let _size = window.inner_size();
         self.window_manager.set_window(window);
         // Initialize wgpu
         pollster::block_on(self.init_wgpu());

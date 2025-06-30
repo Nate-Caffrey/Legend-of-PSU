@@ -43,7 +43,7 @@ impl WindowManager {
 
     pub fn handle_window_event(
         &mut self,
-        event_loop: &ActiveEventLoop,
+        _event_loop: &ActiveEventLoop,
         _id: WindowId,
         event: WindowEvent,
         on_close: impl FnOnce(),

@@ -1,7 +1,6 @@
 use glam::Vec3;
 use crate::engine::graphics::vertex::{BlockFaceInstance};
 use wgpu::util::DeviceExt;
-use std::collections::VecDeque;
 
 pub const CHUNK_SIZE: usize = 16;
 pub const CHUNK_SIZE_F: f32 = CHUNK_SIZE as f32;
@@ -78,41 +77,8 @@ impl Chunk {
 
     pub fn generate_mesh(&mut self, chunk_manager: &crate::game::world::chunk_manager::ChunkManager) {
         self.block_face_instances.clear();
-        let mut visible_air = vec![vec![vec![false; CHUNK_SIZE]; CHUNK_SIZE]; CHUNK_SIZE];
-        let mut queue = VecDeque::new();
-        // Enqueue all boundary air blocks
-        for x in 0..CHUNK_SIZE {
-            for y in 0..CHUNK_SIZE {
-                for z in 0..CHUNK_SIZE {
-                    let is_boundary = x == 0 || y == 0 || z == 0 || x == CHUNK_SIZE - 1 || y == CHUNK_SIZE - 1 || z == CHUNK_SIZE - 1;
-                    if is_boundary && !self.blocks[x][y][z].is_solid() {
-                        visible_air[x][y][z] = true;
-                        queue.push_back((x, y, z));
-                    }
-                }
-            }
-        }
-        // Flood fill from boundary air
-        let neighbors = [
-            (1, 0, 0), (-1, 0, 0),
-            (0, 1, 0), (0, -1, 0),
-            (0, 0, 1), (0, 0, -1),
-        ];
-        while let Some((x, y, z)) = queue.pop_front() {
-            for (dx, dy, dz) in neighbors.iter() {
-                let nx = x as isize + dx;
-                let ny = y as isize + dy;
-                let nz = z as isize + dz;
-                if nx >= 0 && ny >= 0 && nz >= 0 && nx < CHUNK_SIZE as isize && ny < CHUNK_SIZE as isize && nz < CHUNK_SIZE as isize {
-                    let (nx, ny, nz) = (nx as usize, ny as usize, nz as usize);
-                    if !self.blocks[nx][ny][nz].is_solid() && !visible_air[nx][ny][nz] {
-                        visible_air[nx][ny][nz] = true;
-                        queue.push_back((nx, ny, nz));
-                    }
-                }
-            }
-        }
-        // Only add faces adjacent to visible air
+        
+        // Only add faces for solid blocks
         for x in 0..CHUNK_SIZE {
             for y in 0..CHUNK_SIZE {
                 for z in 0..CHUNK_SIZE {
@@ -128,18 +94,20 @@ impl Chunk {
                             let nx = x as isize + offset.0;
                             let ny = y as isize + offset.1;
                             let nz = z as isize + offset.2;
-                            let mut air_visible = false;
-                            if nx >= 0 && ny >= 0 && nz >= 0 && nx < CHUNK_SIZE as isize && ny < CHUNK_SIZE as isize && nz < CHUNK_SIZE as isize {
+                            
+                            let neighbor_is_air = if nx >= 0 && ny >= 0 && nz >= 0 && 
+                                                   nx < CHUNK_SIZE as isize && ny < CHUNK_SIZE as isize && nz < CHUNK_SIZE as isize {
                                 let (nx, ny, nz) = (nx as usize, ny as usize, nz as usize);
-                                air_visible = visible_air[nx][ny][nz];
+                                !self.blocks[nx][ny][nz].is_solid()
                             } else {
                                 // At chunk boundary, check neighbor chunk
                                 let world_x = self.position.x as i32 + x as i32 + offset.0 as i32;
                                 let world_y = self.position.y as i32 + y as i32 + offset.1 as i32;
                                 let world_z = self.position.z as i32 + z as i32 + offset.2 as i32;
-                                air_visible = chunk_manager.get_block(world_x, world_y, world_z).map_or(true, |b| !b.is_solid());
-                            }
-                            if air_visible {
+                                chunk_manager.get_block(world_x, world_y, world_z).map_or(true, |b| !b.is_solid())
+                            };
+                            
+                            if neighbor_is_air {
                                 self.block_face_instances.push(BlockFaceInstance {
                                     position: [self.position.x + x as f32, self.position.y + y as f32, self.position.z + z as f32],
                                     face: face_idx as u32,

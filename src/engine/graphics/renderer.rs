@@ -312,13 +312,13 @@ impl Renderer {
         true
     }
 
-    fn is_face_fully_solid(chunk: &crate::game::world::chunk::Chunk, neighbor: &crate::game::world::chunk::Chunk, dx: f32, dy: f32, dz: f32) -> bool {
+    fn is_face_fully_solid(_chunk: &crate::game::world::chunk::Chunk, neighbor: &crate::game::world::chunk::Chunk, dx: f32, dy: f32, dz: f32) -> bool {
         let cs = crate::game::world::chunk::CHUNK_SIZE;
         // For each block on the face, check if the neighbor's touching block is solid
         for x in 0..cs {
             for y in 0..cs {
                 for z in 0..cs {
-                    let (cx, cy, cz) = (x, y, z);
+                    let (_cx, _cy, _cz) = (x, y, z);
                     let (nx, ny, nz) = match (dx, dy, dz) {
                         (d, 0.0, 0.0) if d > 0.0 => (0, y, z), // +X face
                         (d, 0.0, 0.0) if d < 0.0 => (cs - 1, y, z), // -X face
@@ -399,7 +399,7 @@ impl Renderer {
             all_instances.extend_from_slice(&chunk.block_face_instances);
         }
         // Create instance buffer
-        let instance_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let _instance_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("BlockFace Instance Buffer"),
             contents: bytemuck::cast_slice(&all_instances),
             usage: wgpu::BufferUsages::VERTEX,
