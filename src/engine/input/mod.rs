@@ -1,2 +1,6 @@
-// Input handling module
-// This module will contain input processing logic in the future 
+//! Input handling module
+//! This module contains input processing logic for keyboard, mouse, and window events.
+
+pub mod handler;
+
+pub use handler::InputHandler; 

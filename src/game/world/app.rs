@@ -1,13 +1,14 @@
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
-use winit::window::{Window, WindowId, Fullscreen};
-use winit::keyboard::KeyCode;
+use winit::window::{Window, WindowId};
 use winit::event::DeviceEvent;
+use log::{error, warn};
 
 use crate::game::world::camera::Camera;
 use crate::engine::graphics::{renderer::Renderer, texture::Texture};
 use crate::game::world::chunk_manager::ChunkManager;
+use crate::engine::input::InputHandler;
 
 pub struct App {
     window: Option<Window>,
@@ -17,6 +18,7 @@ pub struct App {
     camera: Camera,
     texture: Option<Texture>,
     chunk_manager: ChunkManager,
+    input_handler: InputHandler,
     fullscreen: bool,
 }
 
@@ -30,6 +32,7 @@ impl Default for App {
             camera: Camera::new(),
             texture: None,
             chunk_manager: ChunkManager::new(10), // view_distance = 1 for now
+            input_handler: InputHandler::new(),
             fullscreen: false,
         }
     }
@@ -37,7 +40,14 @@ impl Default for App {
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let window = event_loop.create_window(Window::default_attributes()).unwrap();
+        let window = event_loop.create_window(Window::default_attributes())
+            .map_err(|e| {
+                error!("Failed to create window: {:?}", e);
+                e
+            }).unwrap_or_else(|_| {
+                error!("Failed to create window, exiting");
+                std::process::exit(1);
+            });
         let size = window.inner_size();
         self.size = Some(size);
         self.window = Some(window);
@@ -51,15 +61,25 @@ impl ApplicationHandler for App {
                 event_loop.exit();
             },
             WindowEvent::RedrawRequested => {
+                // Apply movement based on currently pressed keys
+                self.input_handler.apply_movement(&mut self.camera);
+                self.chunk_manager.update_chunks(self.camera.position);
+                
                 self.chunk_manager.poll_new_chunks();
                 if let (Some(renderer), Some(texture)) = (&self.renderer, &self.texture) {
                     if let Some(window) = &self.window {
-                        let instance = self.instance.as_ref().unwrap();
-                        let surface = instance.create_surface(window).unwrap();
+                        let instance = self.instance.as_ref().unwrap_or_else(|| {
+                            error!("No wgpu instance available");
+                            panic!("No wgpu instance available");
+                        });
+                        let surface = instance.create_surface(window).unwrap_or_else(|e| {
+                            error!("Failed to create surface: {:?}", e);
+                            panic!("Failed to create surface: {:?}", e);
+                        });
                         surface.configure(&renderer.device, &renderer.config);
                         let chunks: Vec<&crate::game::world::chunk::Chunk> = self.chunk_manager.all_chunks().collect();
                         if let Err(e) = renderer.render(&surface, &self.camera, texture, &chunks) {
-                            eprintln!("Render error: {:?}", e);
+                            error!("Render error: {:?}", e);
                         }
                     }
                 }
@@ -69,43 +89,16 @@ impl ApplicationHandler for App {
                 self.resize(physical_size);
             }
             WindowEvent::KeyboardInput { event, .. } => {
-                if event.state == winit::event::ElementState::Pressed {
-                    if let winit::keyboard::PhysicalKey::Code(keycode) = event.physical_key {
-                        match keycode {
-                            KeyCode::KeyW => self.camera.move_forward(),
-                            KeyCode::KeyS => self.camera.move_backward(),
-                            KeyCode::KeyA => self.camera.move_left(),
-                            KeyCode::KeyD => self.camera.move_right(),
-                            KeyCode::Space => self.camera.fly_up(),
-                            KeyCode::ShiftLeft => self.camera.fly_down(),
-                            KeyCode::ShiftRight => self.camera.fly_down(),
-                            KeyCode::F11 => {
-                                if let Some(window) = &self.window {
-                                    if self.fullscreen {
-                                        window.set_fullscreen(None);
-                                    } else {
-                                        window.set_fullscreen(Some(Fullscreen::Borderless(None)));
-                                    }
-                                    self.fullscreen = !self.fullscreen;
-                                }
-                            },
-                            _ => {}
-                        }
-                        self.chunk_manager.update_chunks(self.camera.position);
+                if let winit::keyboard::PhysicalKey::Code(keycode) = event.physical_key {
+                    if event.state == winit::event::ElementState::Pressed {
+                        self.input_handler.handle_keyboard_input_event(keycode, true);
+                    } else if event.state == winit::event::ElementState::Released {
+                        self.input_handler.handle_keyboard_input_event(keycode, false);
                     }
                 }
             }
-            WindowEvent::Focused(true) => {
-                if let Some(window) = &self.window {
-                    let _ = window.set_cursor_grab(winit::window::CursorGrabMode::Locked);
-                    window.set_cursor_visible(false);
-                }
-            }
-            WindowEvent::Focused(false) => {
-                if let Some(window) = &self.window {
-                    let _ = window.set_cursor_grab(winit::window::CursorGrabMode::None);
-                    window.set_cursor_visible(true);
-                }
+            WindowEvent::Focused(focused) => {
+                self.input_handler.handle_window_focus(focused, self.window.as_ref());
             }
             _ => (),
         }
@@ -113,8 +106,7 @@ impl ApplicationHandler for App {
 
     fn device_event(&mut self, _event_loop: &ActiveEventLoop, _device_id: winit::event::DeviceId, event: DeviceEvent) {
         if let DeviceEvent::MouseMotion { delta } = event {
-            let sensitivity = 0.002;
-            self.camera.rotate(delta.0 as f32 * sensitivity, -delta.1 as f32 * sensitivity);
+            self.input_handler.handle_mouse_motion(delta, &mut self.camera);
         }
     }
 }
@@ -129,12 +121,18 @@ impl App {
             ..Default::default()
         });
 
-        let surface = instance.create_surface(window).unwrap();
+        let surface = instance.create_surface(window).unwrap_or_else(|e| {
+            error!("Failed to create surface: {:?}", e);
+            std::process::exit(1);
+        });
         let adapter = instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::default(),
             compatible_surface: Some(&surface),
             force_fallback_adapter: false,
-        }).await.unwrap();
+        }).await.unwrap_or_else(|| {
+            error!("Failed to request adapter");
+            std::process::exit(1);
+        });
 
         let (device, queue) = adapter.request_device(
             &wgpu::DeviceDescriptor {
@@ -143,7 +141,10 @@ impl App {
                 required_limits: wgpu::Limits::default(),
             },
             None,
-        ).await.unwrap();
+        ).await.unwrap_or_else(|e| {
+            error!("Failed to request device: {:?}", e);
+            std::process::exit(1);
+        });
 
         // Configure surface
         let surface_caps = surface.get_capabilities(&adapter);
@@ -172,7 +173,10 @@ impl App {
             "assets/stone.png",            // 3
         ];
         let texture = Texture::load_array(&device, &queue, &texture_paths)
-            .unwrap_or_else(|_| Texture::create_default(&device, &queue));
+            .unwrap_or_else(|e| {
+                warn!("Failed to load texture array: {:?}, using default", e);
+                Texture::create_default(&device, &queue)
+            });
 
         // Create renderer with owned device and queue
         let renderer = Renderer::new(device, queue, &surface, &adapter, size, &texture);
@@ -186,8 +190,14 @@ impl App {
         if new_size.width > 0 && new_size.height > 0 {
             self.size = Some(new_size);
             if let (Some(renderer), Some(window)) = (&mut self.renderer, &self.window) {
-                let instance = self.instance.as_ref().unwrap();
-                let surface = instance.create_surface(window).unwrap();
+                let instance = self.instance.as_ref().unwrap_or_else(|| {
+                    error!("No wgpu instance available for resize");
+                    panic!("No wgpu instance available for resize");
+                });
+                let surface = instance.create_surface(window).unwrap_or_else(|e| {
+                    error!("Failed to create surface for resize: {:?}", e);
+                    panic!("Failed to create surface for resize: {:?}", e);
+                });
                 renderer.resize(new_size, &surface);
             }
         }
