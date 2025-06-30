@@ -1,5 +1,5 @@
 use glam::Vec3;
-use crate::engine::graphics::vertex::Vertex;
+use crate::engine::graphics::vertex::{BlockFaceInstance};
 
 pub const CHUNK_SIZE: usize = 16;
 pub const CHUNK_SIZE_F: f32 = CHUNK_SIZE as f32;
@@ -21,8 +21,7 @@ impl BlockType {
 pub struct Chunk {
     pub position: Vec3,
     pub blocks: [[[BlockType; CHUNK_SIZE]; CHUNK_SIZE]; CHUNK_SIZE],
-    pub vertices: Vec<Vertex>,
-    pub indices: Vec<u16>,
+    pub block_face_instances: Vec<BlockFaceInstance>,
 }
 
 impl Chunk {
@@ -30,8 +29,7 @@ impl Chunk {
         let mut chunk = Self {
             position,
             blocks: [[[BlockType::Air; CHUNK_SIZE]; CHUNK_SIZE]; CHUNK_SIZE],
-            vertices: Vec::new(),
-            indices: Vec::new(),
+            block_face_instances: Vec::new(),
         };
         chunk.generate_terrain();
         chunk
@@ -73,105 +71,48 @@ impl Chunk {
         }
     }
 
-    pub fn generate_mesh(&mut self, chunk_manager: &crate::game::world::chunk_manager::ChunkManager, atlas_helper: &crate::engine::graphics::texture::AtlasUVHelper) {
-        self.vertices.clear();
-        self.indices.clear();
-        let mut vertex_offset = 0;
+    pub fn generate_mesh(&mut self, chunk_manager: &crate::game::world::chunk_manager::ChunkManager) {
+        self.block_face_instances.clear();
         for x in 0..CHUNK_SIZE {
             for y in 0..CHUNK_SIZE {
                 for z in 0..CHUNK_SIZE {
                     if self.blocks[x][y][z].is_solid() {
-                        self.add_block_mesh(x, y, z, &mut vertex_offset, chunk_manager, atlas_helper);
+                        self.add_block_mesh(x, y, z, chunk_manager);
                     }
                 }
             }
         }
     }
 
-    fn add_block_mesh(&mut self, x: usize, y: usize, z: usize, _vertex_offset: &mut u16, chunk_manager: &crate::game::world::chunk_manager::ChunkManager, atlas_helper: &crate::engine::graphics::texture::AtlasUVHelper) {
+    fn add_block_mesh(&mut self, x: usize, y: usize, z: usize, chunk_manager: &crate::game::world::chunk_manager::ChunkManager) {
         let world_x = self.position.x as i32 + x as i32;
         let world_y = self.position.y as i32 + y as i32;
         let world_z = self.position.z as i32 + z as i32;
-        let faces = [
-            ((0, 0, 1), [
-                [0.0, 0.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 1.0], [0.0, 1.0, 1.0]
-            ], 0),
-            ((0, 0, -1), [
-                [1.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]
-            ], 1),
-            ((-1, 0, 0), [
-                [0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 1.0, 1.0], [0.0, 1.0, 0.0]
-            ], 2),
-            ((1, 0, 0), [
-                [1.0, 0.0, 1.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [1.0, 1.0, 1.0]
-            ], 3),
-            ((0, 1, 0), [
-                [0.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]
-            ], 4),
-            ((0, -1, 0), [
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0], [0.0, 0.0, 1.0]
-            ], 5),
-        ];
-        
-        // Atlas UV coordinates for each vertex of a face
-        let face_atlas_uvs = [
-            [0.0, 1.0], // bottom-left
-            [1.0, 1.0], // bottom-right
-            [1.0, 0.0], // top-right
-            [0.0, 0.0], // top-left
-        ];
-        
         let block_type = self.blocks[x][y][z];
-        
-        for (face_idx, (offset, positions, _face_id)) in faces.iter().enumerate() {
+        for (face_idx, offset) in [
+            (0, 0, 1),   // Front
+            (0, 0, -1),  // Back
+            (-1, 0, 0),  // Left
+            (1, 0, 0),   // Right
+            (0, 1, 0),   // Top
+            (0, -1, 0),  // Bottom
+        ].iter().enumerate() {
             let nx = world_x + offset.0;
             let ny = world_y + offset.1;
             let nz = world_z + offset.2;
             let neighbor_solid = chunk_manager.get_block(nx, ny, nz).map_or(false, |b| b.is_solid());
-            
             if !neighbor_solid {
-                let base = self.vertices.len() as u16;
-                
-                for i in 0..4 {
-                    // Calculate final UV coordinates by combining face UVs with atlas position
-                    let final_uvs = atlas_helper.get_uv_coords(
-                        match block_type {
-                            crate::game::world::chunk::BlockType::Grass => match face_idx {
-                                4 => 0, // Top face - grass_top
-                                5 => 2, // Bottom face - dirt
-                                _ => 1, // Side faces - grass_side
-                            },
-                            crate::game::world::chunk::BlockType::Dirt => 2, // All faces - dirt
-                            crate::game::world::chunk::BlockType::Stone => 3, // All faces - stone
-                            crate::game::world::chunk::BlockType::Air => 0, // Should not happen
-                        },
-                        face_atlas_uvs[i]
-                    );
-                    
-                    self.vertices.push(crate::engine::graphics::vertex::Vertex {
-                        position: [
-                            self.position.x + x as f32 + positions[i][0],
-                            self.position.y + y as f32 + positions[i][1],
-                            self.position.z + z as f32 + positions[i][2],
-                        ],
-                        tex_coords: final_uvs,
-                        texture_index: 0, // Not used with atlas, but keeping for compatibility
-                    });
-                }
-                
-                self.indices.extend_from_slice(&[
-                    base, base + 1, base + 2,
-                    base, base + 2, base + 3,
-                ]);
+                self.block_face_instances.push(BlockFaceInstance {
+                    position: [self.position.x + x as f32, self.position.y + y as f32, self.position.z + z as f32],
+                    face: face_idx as u32,
+                    block_type: match block_type {
+                        crate::game::world::chunk::BlockType::Grass => 0,
+                        crate::game::world::chunk::BlockType::Dirt => 1,
+                        crate::game::world::chunk::BlockType::Stone => 2,
+                        crate::game::world::chunk::BlockType::Air => 255,
+                    },
+                });
             }
         }
-    }
-
-    pub fn get_vertex_count(&self) -> u32 {
-        self.vertices.len() as u32
-    }
-
-    pub fn get_index_count(&self) -> u32 {
-        self.indices.len() as u32
     }
 } 

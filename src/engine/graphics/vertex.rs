@@ -36,6 +36,41 @@ impl Vertex {
     }
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct BlockFaceInstance {
+    pub position: [f32; 3], // World position of the block
+    pub face: u32,          // Face index (0-5)
+    pub block_type: u32,    // Block type/texture index
+}
+
+impl BlockFaceInstance {
+    pub fn desc() -> wgpu::VertexBufferLayout<'static> {
+        const ATTRIBUTES: &[wgpu::VertexAttribute] = &[
+            wgpu::VertexAttribute {
+                offset: 0,
+                shader_location: 3,
+                format: wgpu::VertexFormat::Float32x3,
+            },
+            wgpu::VertexAttribute {
+                offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+                shader_location: 4,
+                format: wgpu::VertexFormat::Uint32,
+            },
+            wgpu::VertexAttribute {
+                offset: (std::mem::size_of::<[f32; 3]>() + std::mem::size_of::<u32>()) as wgpu::BufferAddress,
+                shader_location: 5,
+                format: wgpu::VertexFormat::Uint32,
+            },
+        ];
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<BlockFaceInstance>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: ATTRIBUTES,
+        }
+    }
+}
+
 // 3D cube vertices with texture coordinates for all 6 faces
 pub const CUBE_VERTICES: &[Vertex] = &[
     // Front face

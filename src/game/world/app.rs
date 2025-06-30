@@ -67,9 +67,7 @@ impl ApplicationHandler for App {
                 self.input_handler.apply_movement(&mut self.camera);
                 self.chunk_manager.update_chunks(self.camera.position);
                 
-                if let Some(atlas_helper) = &self.atlas_helper {
-                    self.chunk_manager.poll_new_chunks(atlas_helper);
-                }
+                self.chunk_manager.poll_new_chunks();
                 if let (Some(renderer), Some(texture)) = (&self.renderer, &self.texture) {
                     if let Some(window) = &self.window {
                         let instance = self.instance.as_ref().unwrap_or_else(|| {
