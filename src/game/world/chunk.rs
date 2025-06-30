@@ -33,10 +33,7 @@ impl Chunk {
             vertices: Vec::new(),
             indices: Vec::new(),
         };
-        
         chunk.generate_terrain();
-        chunk.generate_mesh();
-        
         chunk
     }
 
@@ -76,92 +73,75 @@ impl Chunk {
         }
     }
 
-    pub fn generate_mesh(&mut self) {
+    pub fn generate_mesh(&mut self, chunk_manager: &crate::game::world::chunk_manager::ChunkManager) {
         self.vertices.clear();
         self.indices.clear();
-        
         let mut vertex_offset = 0;
-
         for x in 0..CHUNK_SIZE {
             for y in 0..CHUNK_SIZE {
                 for z in 0..CHUNK_SIZE {
                     if self.blocks[x][y][z].is_solid() {
-                        self.add_block_mesh(x, y, z, &mut vertex_offset);
+                        self.add_block_mesh(x, y, z, &mut vertex_offset, chunk_manager);
                     }
                 }
             }
         }
     }
 
-    fn add_block_mesh(&mut self, x: usize, y: usize, z: usize, _vertex_offset: &mut u16) {
-        let world_x = self.position.x + x as f32;
-        let world_y = self.position.y + y as f32;
-        let world_z = self.position.z + z as f32;
-
-        // Each face: (neighbor offset, 4 positions, face index)
+    fn add_block_mesh(&mut self, x: usize, y: usize, z: usize, _vertex_offset: &mut u16, chunk_manager: &crate::game::world::chunk_manager::ChunkManager) {
+        let world_x = self.position.x as i32 + x as i32;
+        let world_y = self.position.y as i32 + y as i32;
+        let world_z = self.position.z as i32 + z as i32;
         let faces = [
-            // Front (+z)
             ((0, 0, 1), [
                 [0.0, 0.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 1.0], [0.0, 1.0, 1.0]
             ], 0),
-            // Back (-z)
             ((0, 0, -1), [
                 [1.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]
             ], 1),
-            // Left (-x)
             ((-1, 0, 0), [
                 [0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 1.0, 1.0], [0.0, 1.0, 0.0]
             ], 2),
-            // Right (+x)
             ((1, 0, 0), [
                 [1.0, 0.0, 1.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [1.0, 1.0, 1.0]
             ], 3),
-            // Top (+y)
             ((0, 1, 0), [
                 [0.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]
             ], 4),
-            // Bottom (-y)
             ((0, -1, 0), [
                 [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0], [0.0, 0.0, 1.0]
             ], 5),
         ];
         let face_uvs = [
-            [0.0, 1.0], // bottom-left
-            [1.0, 1.0], // bottom-right
-            [1.0, 0.0], // top-right
-            [0.0, 0.0], // top-left
+            [0.0, 1.0],
+            [1.0, 1.0],
+            [1.0, 0.0],
+            [0.0, 0.0],
         ];
-
         let block_type = self.blocks[x][y][z];
-
         for (face_idx, (offset, positions, _face_id)) in faces.iter().enumerate() {
-            let nx = x as isize + offset.0;
-            let ny = y as isize + offset.1;
-            let nz = z as isize + offset.2;
-            let neighbor_solid = if nx >= 0 && nx < CHUNK_SIZE as isize && ny >= 0 && ny < CHUNK_SIZE as isize && nz >= 0 && nz < CHUNK_SIZE as isize {
-                self.blocks[nx as usize][ny as usize][nz as usize].is_solid()
-            } else {
-                false
-            };
+            let nx = world_x + offset.0;
+            let ny = world_y + offset.1;
+            let nz = world_z + offset.2;
+            let neighbor_solid = chunk_manager.get_block(nx, ny, nz).map_or(false, |b| b.is_solid());
             if !neighbor_solid {
                 let base = self.vertices.len() as u16;
-                // Determine texture index for this face
                 let texture_index = match block_type {
-                    BlockType::Grass => match face_idx {
-                        4 => 0, // Top
-                        5 => 2, // Bottom
-                        _ => 1, // Sides
+                    crate::game::world::chunk::BlockType::Grass => match face_idx {
+                        4 => 0,
+                        5 => 2,
+                        _ => 1,
                     },
-                    BlockType::Dirt => 2,
-                    BlockType::Stone => 3,
-                    BlockType::Air => 0, // Should not happen
+                    crate::game::world::chunk::BlockType::Dirt => 2,
+                    crate::game::world::chunk::BlockType::Stone => 3,
+                    crate::game::world::chunk::BlockType::Air => 0,
                 };
                 for i in 0..4 {
                     self.vertices.push(crate::engine::graphics::vertex::Vertex {
                         position: [
-                            world_x + positions[i][0],
-                            world_y + positions[i][1],
-                            world_z + positions[i][2],
+                            self.position.x + x as f32 + positions[i][0],
+                            self.position.y + y as f32 + positions[i][1],
+                            self.position.z + z as f32 + positions[i][2],
                         ],
                         tex_coords: face_uvs[i],
                         texture_index,

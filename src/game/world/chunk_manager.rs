@@ -60,13 +60,30 @@ impl ChunkManager {
 
     /// Call this every frame to receive finished chunks
     pub fn poll_new_chunks(&mut self) {
-        while let Ok((x, y, z, chunk)) = self.rx.try_recv() {
-            self.loaded.insert((x, y, z), chunk);
+        let mut to_remesh = Vec::new();
+        while let Ok((x, y, z, mut chunk)) = self.rx.try_recv() {
+            to_remesh.push(((x, y, z), chunk));
             self.pending.remove(&(x, y, z));
+        }
+        for ((x, y, z), mut chunk) in to_remesh {
+            chunk.generate_mesh(self);
+            self.loaded.insert((x, y, z), chunk);
         }
     }
 
     pub fn all_chunks(&self) -> impl Iterator<Item = &Chunk> {
         self.loaded.values()
+    }
+
+    pub fn get_block(&self, world_x: i32, world_y: i32, world_z: i32) -> Option<crate::game::world::chunk::BlockType> {
+        let chunk_x = (world_x as f32 / CHUNK_SIZE as f32).floor() as i32;
+        let chunk_y = (world_y as f32 / CHUNK_SIZE as f32).floor() as i32;
+        let chunk_z = (world_z as f32 / CHUNK_SIZE as f32).floor() as i32;
+        let local_x = ((world_x % CHUNK_SIZE as i32) + CHUNK_SIZE as i32) % CHUNK_SIZE as i32;
+        let local_y = ((world_y % CHUNK_SIZE as i32) + CHUNK_SIZE as i32) % CHUNK_SIZE as i32;
+        let local_z = ((world_z % CHUNK_SIZE as i32) + CHUNK_SIZE as i32) % CHUNK_SIZE as i32;
+        self.loaded.get(&(chunk_x, chunk_y, chunk_z)).map(|chunk| {
+            chunk.blocks[local_x as usize][local_y as usize][local_z as usize]
+        })
     }
 } 
