@@ -1,0 +1,17 @@
+[package]
+name = "game"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+winit = "0.30.11"
+wgpu = "0.20.0"
+pollster = "0.3.0"
+bytemuck = { version = "1.14", features = ["derive"] }
+glam = "0.27.0"
+legion = "0.3.0"
+crossbeam-channel = "0.5"
+rayon = "1.8.0"
+gltf = "1.4.1"
+base64 = "0.22.1"
+image = "0.25.6"
