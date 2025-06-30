@@ -282,12 +282,68 @@ impl Renderer {
         false
     }
 
+    fn is_chunk_fully_surrounded(chunk: &crate::game::world::chunk::Chunk, chunk_manager: &crate::game::world::chunk_manager::ChunkManager) -> bool {
+        let pos = chunk.position;
+        let cs = crate::game::world::chunk::CHUNK_SIZE as f32;
+        let neighbor_offsets = [
+            (cs, 0.0, 0.0),   // +X
+            (-cs, 0.0, 0.0),  // -X
+            (0.0, cs, 0.0),   // +Y
+            (0.0, -cs, 0.0),  // -Y
+            (0.0, 0.0, cs),   // +Z
+            (0.0, 0.0, -cs),  // -Z
+        ];
+        for (dx, dy, dz) in neighbor_offsets.iter() {
+            let neighbor_pos = (pos.x + dx, pos.y + dy, pos.z + dz);
+            let chunk_key = (
+                (neighbor_pos.0 / cs) as i32,
+                (neighbor_pos.1 / cs) as i32,
+                (neighbor_pos.2 / cs) as i32,
+            );
+            if let Some(neighbor) = chunk_manager.loaded.get(&chunk_key) {
+                // Check if the touching face is fully solid
+                if !Renderer::is_face_fully_solid(chunk, neighbor, *dx, *dy, *dz) {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn is_face_fully_solid(chunk: &crate::game::world::chunk::Chunk, neighbor: &crate::game::world::chunk::Chunk, dx: f32, dy: f32, dz: f32) -> bool {
+        let cs = crate::game::world::chunk::CHUNK_SIZE;
+        // For each block on the face, check if the neighbor's touching block is solid
+        for x in 0..cs {
+            for y in 0..cs {
+                for z in 0..cs {
+                    let (cx, cy, cz) = (x, y, z);
+                    let (nx, ny, nz) = match (dx, dy, dz) {
+                        (d, 0.0, 0.0) if d > 0.0 => (0, y, z), // +X face
+                        (d, 0.0, 0.0) if d < 0.0 => (cs - 1, y, z), // -X face
+                        (0.0, d, 0.0) if d > 0.0 => (x, 0, z), // +Y face
+                        (0.0, d, 0.0) if d < 0.0 => (x, cs - 1, z), // -Y face
+                        (0.0, 0.0, d) if d > 0.0 => (x, y, 0), // +Z face
+                        (0.0, 0.0, d) if d < 0.0 => (x, y, cs - 1), // -Z face
+                        _ => continue,
+                    };
+                    if !neighbor.blocks[nx][ny][nz].is_solid() {
+                        return false;
+                    }
+                }
+            }
+        }
+        true
+    }
+
     pub fn render(
         &self,
         surface: &wgpu::Surface,
         camera: &Camera,
         texture: &Texture,
         chunks: &[&crate::game::world::chunk::Chunk],
+        chunk_manager: &crate::game::world::chunk_manager::ChunkManager,
     ) -> Result<(), wgpu::SurfaceError> {
         let frame = surface.get_current_texture()?;
         let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -319,6 +375,11 @@ impl Renderer {
             
             // Occlusion culling
             if Renderer::is_chunk_occluded(chunk.position, crate::game::world::chunk::CHUNK_SIZE as f32, camera.position, camera_forward) {
+                return false;
+            }
+            
+            // Practical occlusion: skip if fully surrounded
+            if Renderer::is_chunk_fully_surrounded(chunk, chunk_manager) {
                 return false;
             }
             
@@ -394,7 +455,7 @@ impl Renderer {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
             render_pass.set_bind_group(1, &texture.bind_group, &[]);
-            for chunk in chunks {
+            for chunk in visible_chunks {
                 if let Some(instance_buffer) = &chunk.instance_buffer {
                     render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
                     render_pass.set_vertex_buffer(1, instance_buffer.slice(..));

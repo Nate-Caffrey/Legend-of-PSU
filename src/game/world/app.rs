@@ -91,7 +91,7 @@ impl ApplicationHandler for App {
                         });
                         surface.configure(&renderer.device, &renderer.config);
                         let chunks: Vec<&crate::game::world::chunk::Chunk> = self.chunk_manager.all_chunks().collect();
-                        if let Err(e) = renderer.render(&surface, &self.camera, texture, &chunks) {
+                        if let Err(e) = renderer.render(&surface, &self.camera, texture, &chunks, &self.chunk_manager) {
                             error!("Render error: {:?}", e);
                         }
                     }
