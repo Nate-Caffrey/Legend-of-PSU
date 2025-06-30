@@ -1,5 +1,6 @@
 use wgpu;
 use image;
+use log::{error, info};
 
 pub struct Texture {
     pub texture: wgpu::Texture,
@@ -9,7 +10,10 @@ pub struct Texture {
 
 impl Texture {
     pub fn load_array(device: &wgpu::Device, queue: &wgpu::Queue, paths: &[&str]) -> Result<Self, Box<dyn std::error::Error>> {
-        assert!(paths.len() > 0);
+        if paths.is_empty() {
+            error!("No texture paths provided");
+            return Err("No texture paths provided".into());
+        }
         let mut images = Vec::new();
         for path in paths {
             let img = image::open(path)?.to_rgba8();
@@ -17,7 +21,10 @@ impl Texture {
         }
         let dimensions = images[0].dimensions();
         for img in &images {
-            assert_eq!(img.dimensions(), dimensions, "All textures must have the same dimensions");
+            if img.dimensions() != dimensions {
+                error!("All textures must have the same dimensions");
+                return Err("All textures must have the same dimensions".into());
+            }
         }
         let texture_size = wgpu::Extent3d {
             width: dimensions.0,
@@ -114,7 +121,7 @@ impl Texture {
         let img = image::open(path)?;
         let rgba = img.to_rgba8();
         let dimensions = rgba.dimensions();
-        println!("[texture] Loaded texture: {}x{} from {}", dimensions.0, dimensions.1, path);
+        info!("[texture] Loaded texture: {}x{} from {}", dimensions.0, dimensions.1, path);
 
         let texture_size = wgpu::Extent3d {
             width: dimensions.0,
@@ -198,7 +205,6 @@ impl Texture {
                 },
             ],
         });
-
         Ok(Self {
             texture,
             bind_group,
