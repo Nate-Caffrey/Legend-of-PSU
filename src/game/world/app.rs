@@ -4,6 +4,7 @@ use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowId};
 use winit::event::DeviceEvent;
 use log::{error, warn};
+use std::time::Instant;
 
 use crate::game::world::camera::Camera;
 use crate::engine::graphics::{renderer::Renderer, texture::Texture};
@@ -21,6 +22,10 @@ pub struct App {
     atlas_helper: Option<crate::engine::graphics::texture::AtlasUVHelper>,
     input_handler: InputHandler,
     fullscreen: bool,
+    show_fps: bool,
+    last_fps_print: Instant,
+    frame_count: u32,
+    last_fps: u32,
 }
 
 impl Default for App {
@@ -36,6 +41,10 @@ impl Default for App {
             atlas_helper: None,
             input_handler: InputHandler::new(),
             fullscreen: false,
+            show_fps: false,
+            last_fps_print: Instant::now(),
+            frame_count: 0,
+            last_fps: 0,
         }
     }
 }
@@ -87,6 +96,17 @@ impl ApplicationHandler for App {
                         }
                     }
                 }
+                self.frame_count += 1;
+                if self.show_fps {
+                    let now = Instant::now();
+                    let elapsed = now.duration_since(self.last_fps_print);
+                    if elapsed.as_secs_f32() >= 1.0 {
+                        self.last_fps = self.frame_count;
+                        println!("FPS: {}", self.last_fps);
+                        self.frame_count = 0;
+                        self.last_fps_print = now;
+                    }
+                }
                 self.window.as_ref().unwrap().request_redraw();
             }
             WindowEvent::Resized(physical_size) => {
@@ -95,6 +115,10 @@ impl ApplicationHandler for App {
             WindowEvent::KeyboardInput { event, .. } => {
                 if let winit::keyboard::PhysicalKey::Code(keycode) = event.physical_key {
                     if event.state == winit::event::ElementState::Pressed {
+                        if keycode == winit::keyboard::KeyCode::F3 {
+                            self.show_fps = !self.show_fps;
+                            println!("Show FPS: {}", self.show_fps);
+                        }
                         self.input_handler.handle_keyboard_input_event(keycode, true);
                     } else if event.state == winit::event::ElementState::Released {
                         self.input_handler.handle_keyboard_input_event(keycode, false);
