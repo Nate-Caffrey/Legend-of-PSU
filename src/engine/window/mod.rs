@@ -1,4 +1,3 @@
-//! Window management code.
+pub mod manager;
 
-// TODO: Implement window management functionality
-// This module will handle window creation, event handling, and window state management 
+pub use manager::WindowManager;

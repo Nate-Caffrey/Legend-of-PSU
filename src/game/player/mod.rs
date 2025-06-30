@@ -1,4 +1,3 @@
-//! Player-related code.
+pub mod player;
 
-// TODO: Implement player functionality
-// This module will handle player movement, state, and interactions 
+pub use player::Player;

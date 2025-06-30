@@ -1,4 +1,5 @@
 //! Game state management.
 
-// TODO: Implement game state management
-// This module will handle game states, transitions, and state persistence 
+pub mod game_state;
+
+pub use game_state::GameState;

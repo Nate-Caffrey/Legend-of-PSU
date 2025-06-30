@@ -6,45 +6,35 @@ use winit::event::DeviceEvent;
 use log::{error, warn};
 use std::time::Instant;
 
-use crate::game::world::camera::Camera;
+use crate::engine::window::WindowManager;
 use crate::engine::graphics::{renderer::Renderer, texture::Texture};
 use crate::game::world::chunk_manager::ChunkManager;
+use crate::game::state::GameState;
+use crate::game::player::Player;
 use crate::engine::input::InputHandler;
 
 pub struct App {
-    window: Option<Window>,
-    size: Option<winit::dpi::PhysicalSize<u32>>,
+    window_manager: WindowManager,
     instance: Option<wgpu::Instance>,
     renderer: Option<Renderer>,
-    camera: Camera,
+    player: Player,
     texture: Option<Texture>,
     chunk_manager: ChunkManager,
     atlas_helper: Option<crate::engine::graphics::texture::AtlasUVHelper>,
-    input_handler: InputHandler,
-    fullscreen: bool,
-    show_fps: bool,
-    last_fps_print: Instant,
-    frame_count: u32,
-    last_fps: u32,
+    game_state: GameState,
 }
 
 impl Default for App {
     fn default() -> Self {
         Self {
-            window: None,
-            size: None,
+            window_manager: WindowManager::new(),
             instance: None,
             renderer: None,
-            camera: Camera::new(),
+            player: Player::new(),
             texture: None,
-            chunk_manager: ChunkManager::new(10), // view_distance = 1 for now
+            chunk_manager: ChunkManager::new(10), // view_distance = 10 for now
             atlas_helper: None,
-            input_handler: InputHandler::new(),
-            fullscreen: false,
-            show_fps: false,
-            last_fps_print: Instant::now(),
-            frame_count: 0,
-            last_fps: 0,
+            game_state: GameState::new(),
         }
     }
 }
@@ -60,8 +50,7 @@ impl ApplicationHandler for App {
                 std::process::exit(1);
             });
         let size = window.inner_size();
-        self.size = Some(size);
-        self.window = Some(window);
+        self.window_manager.set_window(window);
         // Initialize wgpu
         pollster::block_on(self.init_wgpu());
     }
@@ -72,15 +61,15 @@ impl ApplicationHandler for App {
                 event_loop.exit();
             },
             WindowEvent::RedrawRequested => {
-                // Apply movement based on currently pressed keys
-                self.input_handler.apply_movement(&mut self.camera);
-                self.chunk_manager.update_chunks(self.camera.position);
+                // Update player movement
+                self.player.update(0.016); // Assuming 60 FPS for now
+                self.chunk_manager.update_chunks(self.player.get_position());
                 
                 if let Some(renderer) = &self.renderer {
                     self.chunk_manager.poll_new_chunks(&renderer.device);
                 }
                 if let (Some(renderer), Some(texture)) = (&self.renderer, &self.texture) {
-                    if let Some(window) = &self.window {
+                    if let Some(window) = self.window_manager.get_window() {
                         let instance = self.instance.as_ref().unwrap_or_else(|| {
                             error!("No wgpu instance available");
                             panic!("No wgpu instance available");
@@ -91,58 +80,48 @@ impl ApplicationHandler for App {
                         });
                         surface.configure(&renderer.device, &renderer.config);
                         let chunks: Vec<&crate::game::world::chunk::Chunk> = self.chunk_manager.all_chunks().collect();
-                        if let Err(e) = renderer.render(&surface, &self.camera, texture, &chunks, &self.chunk_manager) {
+                        if let Err(e) = renderer.render(&surface, self.player.get_camera(), texture, &chunks, &self.chunk_manager) {
                             error!("Render error: {:?}", e);
                         }
                     }
                 }
-                self.frame_count += 1;
-                if self.show_fps {
-                    let now = Instant::now();
-                    let elapsed = now.duration_since(self.last_fps_print);
-                    if elapsed.as_secs_f32() >= 1.0 {
-                        self.last_fps = self.frame_count;
-                        println!("FPS: {}", self.last_fps);
-                        self.frame_count = 0;
-                        self.last_fps_print = now;
-                    }
+                
+                // Update game state (FPS tracking)
+                self.game_state.update_frame_count();
+                if let Some(fps) = self.game_state.update_fps_display() {
+                    println!("FPS: {}", fps);
                 }
-                self.window.as_ref().unwrap().request_redraw();
+                
+                self.window_manager.request_redraw();
             }
             WindowEvent::Resized(physical_size) => {
                 self.resize(physical_size);
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 if let winit::keyboard::PhysicalKey::Code(keycode) = event.physical_key {
-                    if event.state == winit::event::ElementState::Pressed {
-                        if keycode == winit::keyboard::KeyCode::F3 {
-                            self.show_fps = !self.show_fps;
-                            println!("Show FPS: {}", self.show_fps);
-                        }
-                        self.input_handler.handle_keyboard_input_event(keycode, true);
-                    } else if event.state == winit::event::ElementState::Released {
-                        self.input_handler.handle_keyboard_input_event(keycode, false);
+                    let pressed = event.state == winit::event::ElementState::Pressed;
+                    if pressed && keycode == winit::keyboard::KeyCode::F3 {
+                        self.game_state.toggle_fps_display();
                     }
+                    self.player.handle_keyboard_input(keycode, pressed);
                 }
             }
             WindowEvent::Focused(focused) => {
-                self.input_handler.handle_window_focus(focused, self.window.as_ref());
+                self.player.handle_window_focus(focused, self.window_manager.get_window());
             }
             _ => (),
         }
     }
 
     fn device_event(&mut self, _event_loop: &ActiveEventLoop, _device_id: winit::event::DeviceId, event: DeviceEvent) {
-        if let DeviceEvent::MouseMotion { delta } = event {
-            self.input_handler.handle_mouse_motion(delta, &mut self.camera);
-        }
+        self.player.handle_device_event(event);
     }
 }
 
 impl App {
     async fn init_wgpu(&mut self) {
-        let window = self.window.as_ref().unwrap();
-        let size = self.size.unwrap();
+        let window = self.window_manager.window.as_ref().unwrap();
+        let size = window.inner_size();
 
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
@@ -220,8 +199,8 @@ impl App {
 
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
-            self.size = Some(new_size);
-            if let (Some(renderer), Some(window)) = (&mut self.renderer, &self.window) {
+            self.window_manager.set_window_size(new_size);
+            if let (Some(renderer), Some(window)) = (&mut self.renderer, self.window_manager.get_window()) {
                 let instance = self.instance.as_ref().unwrap_or_else(|| {
                     error!("No wgpu instance available for resize");
                     panic!("No wgpu instance available for resize");

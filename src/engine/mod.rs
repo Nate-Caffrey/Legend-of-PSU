@@ -1,8 +1,7 @@
-//! Core engine code, reusable across different games or projects.
+//! Engine module containing graphics, input, and window management.
 
 pub mod graphics;
 pub mod input;
-pub mod shaders;
 pub mod window;
 
 // Re-export commonly used types
