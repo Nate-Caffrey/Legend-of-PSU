@@ -14,6 +14,9 @@ pub struct Renderer {
     pub camera_bind_group: wgpu::BindGroup,
     pub camera_bind_group_layout: wgpu::BindGroupLayout,
     pub depth_texture: wgpu::Texture,
+    // Occlusion culling support
+    pub depth_pyramid: wgpu::Texture,
+    pub depth_pyramid_mip_levels: u32,
 }
 
 impl Renderer {
@@ -146,6 +149,23 @@ impl Renderer {
             view_formats: &[],
         });
 
+        // Occlusion culling support
+        let depth_pyramid_mip_levels = (size.width.max(size.height) as f32).log2().ceil() as u32;
+        let depth_pyramid = device.create_texture(&wgpu::TextureDescriptor {
+            size: wgpu::Extent3d {
+                width: size.width,
+                height: size.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: depth_pyramid_mip_levels,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::R32Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::RENDER_ATTACHMENT,
+            label: Some("Depth Pyramid"),
+            view_formats: &[],
+        });
+
         Self {
             device,
             queue,
@@ -155,6 +175,8 @@ impl Renderer {
             camera_bind_group,
             camera_bind_group_layout,
             depth_texture,
+            depth_pyramid,
+            depth_pyramid_mip_levels,
         }
     }
 
@@ -179,6 +201,24 @@ impl Renderer {
                 label: Some("Depth Texture"),
                 view_formats: &[],
             });
+
+            // Recreate depth pyramid
+            let new_mip_levels = (new_size.width.max(new_size.height) as f32).log2().ceil() as u32;
+            self.depth_pyramid = self.device.create_texture(&wgpu::TextureDescriptor {
+                size: wgpu::Extent3d {
+                    width: new_size.width,
+                    height: new_size.height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: new_mip_levels,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::R32Float,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::RENDER_ATTACHMENT,
+                label: Some("Depth Pyramid"),
+                view_formats: &[],
+            });
+            self.depth_pyramid_mip_levels = new_mip_levels;
         }
     }
 
@@ -218,6 +258,29 @@ impl Renderer {
         ]
     }
 
+    fn calculate_chunk_distance(chunk_pos: Vec3, camera_pos: Vec3) -> f32 {
+        (chunk_pos - camera_pos).length_squared()
+    }
+
+    fn is_chunk_occluded(chunk_pos: Vec3, chunk_size: f32, camera_pos: Vec3, camera_forward: Vec3) -> bool {
+        // Simple occlusion test: check if chunk is behind camera or too far
+        let chunk_center = chunk_pos + Vec3::splat(chunk_size * 0.5);
+        let to_chunk = chunk_center - camera_pos;
+        
+        // If chunk is behind camera, it's occluded
+        if to_chunk.dot(camera_forward) < -chunk_size {
+            return true;
+        }
+        
+        // If chunk is too far, consider it occluded (distance-based culling)
+        let distance = to_chunk.length();
+        if distance > 100.0 { // Adjust this value based on your view distance
+            return true;
+        }
+        
+        false
+    }
+
     pub fn render(
         &self,
         surface: &wgpu::Surface,
@@ -237,12 +300,36 @@ impl Renderer {
         self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[view_proj]));
         let view_proj_mat = camera.view_proj_mat(aspect);
         let frustum_planes = Renderer::extract_frustum_planes(&view_proj_mat);
-        // Frustum culling: filter chunks
-        let visible_chunks: Vec<_> = chunks.iter().filter(|chunk| {
+        
+        // Calculate camera forward vector
+        let (sy, cy) = camera.yaw.sin_cos();
+        let (sp, cp) = camera.pitch.sin_cos();
+        let camera_forward = Vec3::new(cy * cp, sp, sy * cp);
+        
+        // Frustum culling and occlusion culling: filter chunks
+        let mut visible_chunks: Vec<_> = chunks.iter().filter(|chunk| {
             let min = Vec3::new(chunk.position.x, chunk.position.y, chunk.position.z);
             let max = min + Vec3::splat(crate::game::world::chunk::CHUNK_SIZE as f32);
-            Renderer::aabb_in_frustum(min, max, &frustum_planes)
+            
+            // Frustum culling
+            if !Renderer::aabb_in_frustum(min, max, &frustum_planes) {
+                return false;
+            }
+            
+            // Occlusion culling
+            if Renderer::is_chunk_occluded(chunk.position, crate::game::world::chunk::CHUNK_SIZE as f32, camera.position, camera_forward) {
+                return false;
+            }
+            
+            true
         }).collect();
+
+        // Sort chunks by distance (front-to-back for better depth testing)
+        visible_chunks.sort_by(|a, b| {
+            let dist_a = Renderer::calculate_chunk_distance(a.position, camera.position);
+            let dist_b = Renderer::calculate_chunk_distance(b.position, camera.position);
+            dist_a.partial_cmp(&dist_b).unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Create all chunk buffers before the render pass
         let chunk_buffers: Vec<_> = visible_chunks.iter().map(|chunk| {
