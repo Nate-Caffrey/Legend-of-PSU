@@ -59,14 +59,14 @@ impl ChunkManager {
     }
 
     /// Call this every frame to receive finished chunks
-    pub fn poll_new_chunks(&mut self) {
+    pub fn poll_new_chunks(&mut self, atlas_helper: &crate::engine::graphics::texture::AtlasUVHelper) {
         let mut to_remesh = Vec::new();
         while let Ok((x, y, z, mut chunk)) = self.rx.try_recv() {
             to_remesh.push(((x, y, z), chunk));
             self.pending.remove(&(x, y, z));
         }
         for ((x, y, z), mut chunk) in to_remesh {
-            chunk.generate_mesh(self);
+            chunk.generate_mesh(self, atlas_helper);
             self.loaded.insert((x, y, z), chunk);
         }
     }

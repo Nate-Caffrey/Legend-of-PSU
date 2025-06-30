@@ -18,6 +18,7 @@ pub struct App {
     camera: Camera,
     texture: Option<Texture>,
     chunk_manager: ChunkManager,
+    atlas_helper: Option<crate::engine::graphics::texture::AtlasUVHelper>,
     input_handler: InputHandler,
     fullscreen: bool,
 }
@@ -32,6 +33,7 @@ impl Default for App {
             camera: Camera::new(),
             texture: None,
             chunk_manager: ChunkManager::new(10), // view_distance = 1 for now
+            atlas_helper: None,
             input_handler: InputHandler::new(),
             fullscreen: false,
         }
@@ -65,7 +67,9 @@ impl ApplicationHandler for App {
                 self.input_handler.apply_movement(&mut self.camera);
                 self.chunk_manager.update_chunks(self.camera.position);
                 
-                self.chunk_manager.poll_new_chunks();
+                if let Some(atlas_helper) = &self.atlas_helper {
+                    self.chunk_manager.poll_new_chunks(atlas_helper);
+                }
                 if let (Some(renderer), Some(texture)) = (&self.renderer, &self.texture) {
                     if let Some(window) = &self.window {
                         let instance = self.instance.as_ref().unwrap_or_else(|| {
@@ -165,18 +169,21 @@ impl App {
         };
         surface.configure(&device, &config);
 
-        // Load texture array for blocks
+        // Load texture atlas for blocks
         let texture_paths = [
             "assets/grass_block_top.png",   // 0
             "assets/grass_block_side.png", // 1
             "assets/dirt.png",             // 2
             "assets/stone.png",            // 3
         ];
-        let texture = Texture::load_array(&device, &queue, &texture_paths)
+        let texture = Texture::create_atlas_from_files(&device, &queue, &texture_paths)
             .unwrap_or_else(|e| {
-                warn!("Failed to load texture array: {:?}, using default", e);
+                warn!("Failed to load texture atlas: {:?}, using default", e);
                 Texture::create_default(&device, &queue)
             });
+
+        // Create atlas helper for UV coordinate calculations
+        let atlas_helper = crate::engine::graphics::texture::AtlasUVHelper::new(texture_paths.len());
 
         // Create renderer with owned device and queue
         let renderer = Renderer::new(device, queue, &surface, &adapter, size, &texture);
@@ -184,6 +191,7 @@ impl App {
         self.instance = Some(instance);
         self.renderer = Some(renderer);
         self.texture = Some(texture);
+        self.atlas_helper = Some(atlas_helper);
     }
 
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {

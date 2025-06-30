@@ -2,9 +2,10 @@ use std::collections::HashSet;
 use winit::keyboard::KeyCode;
 use winit::window::{Window, Fullscreen, CursorGrabMode};
 use log::debug;
+use winit::event::DeviceEvent;
 
 use crate::game::world::camera::Camera;
-use crate::game::world::chunk_manager::ChunkManager;
+use log::warn;
 
 pub struct InputHandler {
     pub mouse_sensitivity: f32,

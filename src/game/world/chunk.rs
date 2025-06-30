@@ -73,7 +73,7 @@ impl Chunk {
         }
     }
 
-    pub fn generate_mesh(&mut self, chunk_manager: &crate::game::world::chunk_manager::ChunkManager) {
+    pub fn generate_mesh(&mut self, chunk_manager: &crate::game::world::chunk_manager::ChunkManager, atlas_helper: &crate::engine::graphics::texture::AtlasUVHelper) {
         self.vertices.clear();
         self.indices.clear();
         let mut vertex_offset = 0;
@@ -81,14 +81,14 @@ impl Chunk {
             for y in 0..CHUNK_SIZE {
                 for z in 0..CHUNK_SIZE {
                     if self.blocks[x][y][z].is_solid() {
-                        self.add_block_mesh(x, y, z, &mut vertex_offset, chunk_manager);
+                        self.add_block_mesh(x, y, z, &mut vertex_offset, chunk_manager, atlas_helper);
                     }
                 }
             }
         }
     }
 
-    fn add_block_mesh(&mut self, x: usize, y: usize, z: usize, _vertex_offset: &mut u16, chunk_manager: &crate::game::world::chunk_manager::ChunkManager) {
+    fn add_block_mesh(&mut self, x: usize, y: usize, z: usize, _vertex_offset: &mut u16, chunk_manager: &crate::game::world::chunk_manager::ChunkManager, atlas_helper: &crate::engine::graphics::texture::AtlasUVHelper) {
         let world_x = self.position.x as i32 + x as i32;
         let world_y = self.position.y as i32 + y as i32;
         let world_z = self.position.z as i32 + z as i32;
@@ -112,41 +112,53 @@ impl Chunk {
                 [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0], [0.0, 0.0, 1.0]
             ], 5),
         ];
-        let face_uvs = [
-            [0.0, 1.0],
-            [1.0, 1.0],
-            [1.0, 0.0],
-            [0.0, 0.0],
+        
+        // Atlas UV coordinates for each vertex of a face
+        let face_atlas_uvs = [
+            [0.0, 1.0], // bottom-left
+            [1.0, 1.0], // bottom-right
+            [1.0, 0.0], // top-right
+            [0.0, 0.0], // top-left
         ];
+        
         let block_type = self.blocks[x][y][z];
+        
         for (face_idx, (offset, positions, _face_id)) in faces.iter().enumerate() {
             let nx = world_x + offset.0;
             let ny = world_y + offset.1;
             let nz = world_z + offset.2;
             let neighbor_solid = chunk_manager.get_block(nx, ny, nz).map_or(false, |b| b.is_solid());
+            
             if !neighbor_solid {
                 let base = self.vertices.len() as u16;
-                let texture_index = match block_type {
-                    crate::game::world::chunk::BlockType::Grass => match face_idx {
-                        4 => 0,
-                        5 => 2,
-                        _ => 1,
-                    },
-                    crate::game::world::chunk::BlockType::Dirt => 2,
-                    crate::game::world::chunk::BlockType::Stone => 3,
-                    crate::game::world::chunk::BlockType::Air => 0,
-                };
+                
                 for i in 0..4 {
+                    // Calculate final UV coordinates by combining face UVs with atlas position
+                    let final_uvs = atlas_helper.get_uv_coords(
+                        match block_type {
+                            crate::game::world::chunk::BlockType::Grass => match face_idx {
+                                4 => 0, // Top face - grass_top
+                                5 => 2, // Bottom face - dirt
+                                _ => 1, // Side faces - grass_side
+                            },
+                            crate::game::world::chunk::BlockType::Dirt => 2, // All faces - dirt
+                            crate::game::world::chunk::BlockType::Stone => 3, // All faces - stone
+                            crate::game::world::chunk::BlockType::Air => 0, // Should not happen
+                        },
+                        face_atlas_uvs[i]
+                    );
+                    
                     self.vertices.push(crate::engine::graphics::vertex::Vertex {
                         position: [
                             self.position.x + x as f32 + positions[i][0],
                             self.position.y + y as f32 + positions[i][1],
                             self.position.z + z as f32 + positions[i][2],
                         ],
-                        tex_coords: face_uvs[i],
-                        texture_index,
+                        tex_coords: final_uvs,
+                        texture_index: 0, // Not used with atlas, but keeping for compatibility
                     });
                 }
+                
                 self.indices.extend_from_slice(&[
                     base, base + 1, base + 2,
                     base, base + 2, base + 3,
