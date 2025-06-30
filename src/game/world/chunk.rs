@@ -1,5 +1,5 @@
 use glam::Vec3;
-use crate::graphics::vertex::{Vertex, CUBE_VERTICES, CUBE_INDICES};
+use crate::engine::graphics::vertex::Vertex;
 
 pub const CHUNK_SIZE: usize = 16;
 pub const CHUNK_SIZE_F: f32 = CHUNK_SIZE as f32;
@@ -134,7 +134,7 @@ impl Chunk {
 
         let block_type = self.blocks[x][y][z];
 
-        for (face_idx, (offset, positions, face_id)) in faces.iter().enumerate() {
+        for (face_idx, (offset, positions, _face_id)) in faces.iter().enumerate() {
             let nx = x as isize + offset.0;
             let ny = y as isize + offset.1;
             let nz = z as isize + offset.2;
@@ -157,7 +157,7 @@ impl Chunk {
                     BlockType::Air => 0, // Should not happen
                 };
                 for i in 0..4 {
-                    self.vertices.push(crate::graphics::vertex::Vertex {
+                    self.vertices.push(crate::engine::graphics::vertex::Vertex {
                         position: [
                             world_x + positions[i][0],
                             world_y + positions[i][1],

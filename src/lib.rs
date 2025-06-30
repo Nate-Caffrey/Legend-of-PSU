@@ -1,6 +1,7 @@
-pub mod graphics;
-pub mod scene;
-pub mod input;
-pub mod shaders;
+//! Library entry point for the game engine.
 
-pub use scene::App; 
+pub mod engine;
+pub mod game;
+
+// Re-export main types for convenience
+pub use game::App; 

@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use glam::Vec3;
-use crate::scene::chunk::{Chunk, CHUNK_SIZE};
+use crate::game::world::chunk::{Chunk, CHUNK_SIZE};
 use crossbeam_channel::{Sender, Receiver, unbounded};
 
 pub struct ChunkManager {

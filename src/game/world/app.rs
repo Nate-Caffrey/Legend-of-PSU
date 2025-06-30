@@ -5,9 +5,9 @@ use winit::window::{Window, WindowId, Fullscreen};
 use winit::keyboard::KeyCode;
 use winit::event::DeviceEvent;
 
-use crate::scene::camera::Camera;
-use crate::graphics::{renderer::Renderer, texture::Texture};
-use crate::scene::chunk_manager::ChunkManager;
+use crate::game::world::camera::Camera;
+use crate::engine::graphics::{renderer::Renderer, texture::Texture};
+use crate::game::world::chunk_manager::ChunkManager;
 
 pub struct App {
     window: Option<Window>,
@@ -57,7 +57,7 @@ impl ApplicationHandler for App {
                         let instance = self.instance.as_ref().unwrap();
                         let surface = instance.create_surface(window).unwrap();
                         surface.configure(&renderer.device, &renderer.config);
-                        let chunks: Vec<&crate::scene::chunk::Chunk> = self.chunk_manager.all_chunks().collect();
+                        let chunks: Vec<&crate::game::world::chunk::Chunk> = self.chunk_manager.all_chunks().collect();
                         if let Err(e) = renderer.render(&surface, &self.camera, texture, &chunks) {
                             eprintln!("Render error: {:?}", e);
                         }

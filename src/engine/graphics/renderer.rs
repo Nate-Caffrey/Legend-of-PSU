@@ -1,9 +1,8 @@
 use std::borrow::Cow;
 use wgpu;
 use wgpu::util::DeviceExt;
-use crate::graphics::{vertex::Vertex, texture::Texture};
-use crate::scene::camera::Camera;
-use crate::scene::chunk::Chunk;
+use crate::engine::graphics::{vertex::Vertex, texture::Texture};
+use crate::game::world::camera::Camera;
 use glam::{Vec3, Mat4, Vec4};
 
 pub struct Renderer {
@@ -24,7 +23,7 @@ impl Renderer {
         surface: &wgpu::Surface,
         adapter: &wgpu::Adapter,
         size: winit::dpi::PhysicalSize<u32>,
-        texture: &crate::graphics::texture::Texture,
+        texture: &crate::engine::graphics::texture::Texture,
     ) -> Self {
         let surface_caps = surface.get_capabilities(adapter);
         let surface_format = surface_caps.formats.iter()
@@ -224,7 +223,7 @@ impl Renderer {
         surface: &wgpu::Surface,
         camera: &Camera,
         texture: &Texture,
-        chunks: &[&crate::scene::chunk::Chunk],
+        chunks: &[&crate::game::world::chunk::Chunk],
     ) -> Result<(), wgpu::SurfaceError> {
         let frame = surface.get_current_texture()?;
         let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -241,7 +240,7 @@ impl Renderer {
         // Frustum culling: filter chunks
         let visible_chunks: Vec<_> = chunks.iter().filter(|chunk| {
             let min = Vec3::new(chunk.position.x, chunk.position.y, chunk.position.z);
-            let max = min + Vec3::splat(crate::scene::chunk::CHUNK_SIZE as f32);
+            let max = min + Vec3::splat(crate::game::world::chunk::CHUNK_SIZE as f32);
             Renderer::aabb_in_frustum(min, max, &frustum_planes)
         }).collect();
 
